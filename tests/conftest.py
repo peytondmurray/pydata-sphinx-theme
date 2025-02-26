@@ -106,32 +106,43 @@ def url_base():
     host = "localhost"
     url = f"http://{host}:{port}"
 
+    if not docs_build_path.exists():
+        raise ValueError(
+            f"No built documentation exists at {docs_build_path}. Unable to run tests."
+        )
+
     # Try starting the server
     process = Popen(
         ["python", "-m", "http.server", port, "--directory", docs_build_path],
         stdout=PIPE,
     )
 
+    print(f"Starting test server at {url}...")
+
     # Try connecting to the server
     retries = 5
     while retries > 0:
         conn = HTTPConnection(host, port)
+        print("Checking that the server is running...")
         try:
             conn.request("HEAD", "/")
             response = conn.getresponse()
-            if response is not None:
+            if response.status == 200:
                 yield url
                 break
         except ConnectionRefusedError:
-            time.sleep(1)
-            retries -= 1
+            pass
 
-    # If the code above never yields a URL, then we were never able to connect
-    # to the server and retries == 0.
+        time.sleep(1)
+        retries -= 1
+
+    # Clean up by stopping the server
+    process.terminate()
+    process.wait()
+
+    # Raise an error if we were unable to get a 200 response from the server
     if not retries:
-        raise RuntimeError("Failed to start http server in 5 seconds")
-    else:
-        # Otherwise the server started and this fixture is done now and we clean
-        # up by stopping the server.
-        process.terminate()
-        process.wait()
+        raise ConnectionAbortedError(
+            "Unable to serve the docs for running tests. Response:\n"
+            f"  status: {response.status}\n  reason: {response.reason}"
+        )

@@ -42,7 +42,18 @@ def _build_test_site(site_name: str, sphinx_build_factory: Callable) -> None:
 
 def _check_test_site(site_name: str, site_path: Path, test_func: Callable):
     """Make the built test site available to Playwright, then run `test_func` on it."""
-    test_sites_dir.mkdir(exist_ok=True)
+    try:
+        test_sites_dir.mkdir(exist_ok=True)
+    except FileNotFoundError as e:
+        # Figure out which parent doesn't exists; raise a more informative error message
+        for parent in test_sites_dir.parents:
+            if not parent.exists():
+                raise FileNotFoundError(
+                    f"Parent directory {parent} of target directory {test_sites_dir} "
+                    "doesn't exist. Has the test site been built?"
+                ) from e
+        raise
+
     symlink_path = test_sites_dir / site_name
     try:
         symlink_path.symlink_to(site_path, True)
